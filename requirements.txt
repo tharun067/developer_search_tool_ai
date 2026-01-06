@@ -1,0 +1,7 @@
+firecrawl-py>=2.16.0
+langchain>=0.3.26
+langchain-google-genai>=2.1.7
+langgraph>=0.5.3
+pydantic>=2.11.7
+python-dotenv>=1.1.1
+streamlit>=1.30.0
