@@ -159,8 +159,6 @@ with st.sidebar:
 col1, col2, col3 = st.columns([1, 6, 1])
 
 with col2:
-    st.markdown('<div class="search-container">', unsafe_allow_html=True)
-    
     # Search input
     query = st.text_input(
         "Enter your developer tools query:",
@@ -171,8 +169,6 @@ with col2:
     col_btn1, col_btn2, col_btn3 = st.columns([2, 1, 2])
     with col_btn2:
         search_button = st.button("🚀 Search", use_container_width=True)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
 
 # Process search
 if search_button and query:
@@ -193,8 +189,6 @@ if st.session_state.results:
     
     # Company cards
     for i, company in enumerate(result.companies, 1):
-        st.markdown('<div class="company-card">', unsafe_allow_html=True)
-        
         # Company header
         col_header1, col_header2 = st.columns([3, 1])
         with col_header1:
@@ -237,16 +231,12 @@ if st.session_state.results:
         if company.description and company.description != "Analysis failed":
             with st.expander("📝 Description"):
                 st.write(company.description)
-        
-        st.markdown('</div>', unsafe_allow_html=True)
     
     # Analysis section
     if result.analysis:
-        st.markdown('<div class="analysis-box">', unsafe_allow_html=True)
         st.markdown("### 💡 Developer Recommendations")
         st.markdown("---")
         st.markdown(result.analysis)
-        st.markdown('</div>', unsafe_allow_html=True)
 
 # Footer
 st.markdown("---")

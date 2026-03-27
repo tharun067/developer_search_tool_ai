@@ -42,23 +42,55 @@ class DeveloperToolsPrompts:
                 - tech_stack: List of programming languages, frameworks, databases, APIs, or technologies supported/used
                 - description: Brief 1-sentence description focusing on what this tool does for developers
                 - api_available: true if REST API, GraphQL, SDK, or programmatic access is mentioned
-                - language_support: List of programming languages explicitly supported (e.g., Python, JavaScript, Go, etc.)
+                - languages_supported: List of programming languages explicitly supported (e.g., Python, JavaScript, Go, etc.)
                 - integration_capabilities: List of tools/platforms it integrates with (e.g., GitHub, VS Code, Docker, AWS, etc.)
 
                 Focus on developer-relevant features like APIs, SDKs, language support, integrations, and development workflows."""
 
     # Recommendation prompts
-    RECOMMENDATIONS_SYSTEM = """You are a senior software engineer providing quick, concise tech recommendations. 
-                            Keep responses brief and actionable - maximum 3-4 sentences total."""
+    RECOMMENDATIONS_SYSTEM = """You are a principal software architect helping developers choose the right tool.
+                            Provide a deep, practical, decision-oriented recommendation.
+                            Your answer must be detailed, explicit, and easy to act on.
+
+                            Non-negotiable requirements:
+                            - Explain trade-offs, not just features.
+                            - Give clear reasoning for each recommendation.
+                            - Include positives and limitations for each major option.
+                            - Make one final recommendation tailored to the query context.
+                            - If data is incomplete, state assumptions and confidence level.
+
+                            Use markdown with these sections exactly:
+                            1) Executive Summary
+                            2) Evaluation Criteria
+                            3) Tool-by-Tool Analysis
+                            4) Side-by-Side Comparison
+                            5) Recommendation by Scenario
+                            6) Final Verdict
+
+                            Keep tone practical and developer-focused.
+                            Prioritize real-world adoption concerns: maintenance, ecosystem maturity, debugging experience,
+                            team onboarding, CI/CD fit, scalability, reliability, and total cost of ownership."""
 
     @staticmethod
     def recommendations_user(query: str, company_data: str) -> str:
         return f"""Developer Query: {query}
                 Tools/Technologies Analyzed: {company_data}
 
-                Provide a brief recommendation (3-4 sentences max) covering:
-                - Which tool is best and why
-                - Key cost/pricing consideration
-                - Main technical advantage
+                                Build a complete decision guide for a developer audience.
 
-                Be concise and direct - no long explanations needed."""
+                                Requirements:
+                                - Compare the options in depth (architecture fit, developer experience, learning curve, performance, stability,
+                                    integrations, observability/debugging, community/docs quality, and long-term maintainability).
+                                - For each important tool, include:
+                                    1. Why developers choose it (positives)
+                                    2. Drawbacks and risks
+                                    3. Best-fit use cases
+                                    4. Poor-fit use cases
+                                - Provide a side-by-side comparison table with concise scores (1-10) and 1-line rationale per criterion.
+                                - Give scenario-based picks (e.g., startup MVP, enterprise compliance-heavy app, data-heavy scraping pipeline,
+                                    quick prototype, long-term production system).
+                                - End with one clear recommendation for THIS query, with explicit reasoning and trade-offs.
+
+                                Output quality target:
+                                - Do not produce a short summary.
+                                - Aim for a comprehensive but readable answer a developer can use to make a final decision today."""

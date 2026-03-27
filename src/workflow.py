@@ -1,18 +1,75 @@
 from typing import Dict, Any
+import os
+import re
 from langgraph.graph import StateGraph, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from dotenv import load_dotenv
 from .models import ResearchState, CompanyInfo, CompanyAnalysis
 from .firecrawl import FirecrawlService
 from .prompts import DeveloperToolsPrompts
+
+load_dotenv()
 
 
 class Workflow:
     def __init__(self):
         self.firecrawl = FirecrawlService()
-        self.llm = ChatGoogleGenerativeAI(model = "gemini-2.5-flash", temperature = 0)
+        google_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        if not google_api_key:
+            raise ValueError(
+                "Missing GOOGLE_API_KEY (or GEMINI_API_KEY). Add it to your .env file and restart Streamlit."
+            )
+
+        self.llm = ChatGoogleGenerativeAI(
+            model="gemini-3-flash-preview",
+            temperature=0,
+            google_api_key=google_api_key,
+        )
         self.prompts = DeveloperToolsPrompts()
         self.workflow = self._build_workflow()
+
+    @staticmethod
+    def _is_api_key_error(error: Exception) -> bool:
+        message = str(error)
+        return "API_KEY_INVALID" in message or "API Key not found" in message
+
+    @staticmethod
+    def _message_content_to_text(content: Any) -> str:
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str):
+                        parts.append(text)
+                elif hasattr(item, "text") and isinstance(item.text, str):
+                    parts.append(item.text)
+            return "\n".join(parts)
+
+        return str(content)
+
+    @staticmethod
+    def _extract_tool_names(raw_text: str) -> list[str]:
+        if not raw_text:
+            return []
+
+        # Handle line-based outputs and comma-separated outputs.
+        normalized = raw_text.replace(",", "\n")
+        candidates = []
+        for line in normalized.splitlines():
+            cleaned = re.sub(r"^\s*[-*\d.)\s]+", "", line).strip()
+            if cleaned:
+                candidates.append(cleaned)
+
+        # Keep order and remove duplicates.
+        deduped = list(dict.fromkeys(candidates))
+        return deduped
 
     def _build_workflow(self):
         graph = StateGraph(ResearchState)
@@ -32,11 +89,11 @@ class Workflow:
         search_results = self.firecrawl.search_companies(article_query, num_results=3)
 
         all_content = ""
-        for result in search_results.data:
+        for result in search_results:
             url = result.get("url", "")
             scraped = self.firecrawl.scrape_company_pages(url)
             if scraped:
-                all_content + scraped.markdown[:1500] + "\n\n"
+                all_content += scraped[:1500] + "\n\n"
 
         messages = [
             SystemMessage(content=self.prompts.TOOL_EXTRACTION_SYSTEM),
@@ -45,14 +102,15 @@ class Workflow:
 
         try:
             response = self.llm.invoke(messages)
-            tool_names = [
-                name.strip()
-                for name in response.content.strip().split("\n")
-                if name.strip()
-            ]
+            response_text = self._message_content_to_text(response.content).strip()
+            tool_names = self._extract_tool_names(response_text)
             print(f"Extracted tools: {', '.join(tool_names[:5])}")
             return {"extracted_tools": tool_names}
         except Exception as e:
+            if self._is_api_key_error(e):
+                raise ValueError(
+                    "Invalid GOOGLE_API_KEY for Gemini. Generate a new key in Google AI Studio, update .env, and restart Streamlit."
+                ) from e
             print(e)
             return {"extracted_tools": []}
 
@@ -68,6 +126,10 @@ class Workflow:
             analysis = structured_llm.invoke(messages)
             return analysis
         except Exception as e:
+            if self._is_api_key_error(e):
+                raise ValueError(
+                    "Invalid GOOGLE_API_KEY for Gemini. Generate a new key in Google AI Studio, update .env, and restart Streamlit."
+                ) from e
             print(e)
             return CompanyAnalysis(
                 pricing_model="Unknown",
@@ -75,7 +137,7 @@ class Workflow:
                 tech_stack=[],
                 description="Failed",
                 api_available=None,
-                language_support=[],
+                languages_supported=[],
                 integration_capabilities=[],
             )
 
@@ -88,7 +150,8 @@ class Workflow:
             search_results = self.firecrawl.search_companies(state.query, num_results=4)
             tool_names = [
                 result.get("metadata", {}).get("title", "Unknown")
-                for result in search_results.data
+                for result in search_results
+                if result.get("metadata", {}).get("title")
             ]
         else:
             tool_names = extracted_tools[:4]
@@ -100,7 +163,7 @@ class Workflow:
             tool_search_results = self.firecrawl.search_companies(tool_name + " official site", num_results=1)
 
             if tool_search_results:
-                result = tool_search_results.data[0]
+                result = tool_search_results[0]
                 url = result.get("url", "")
 
                 company = CompanyInfo(
@@ -113,7 +176,7 @@ class Workflow:
 
                 scraped = self.firecrawl.scrape_company_pages(url)
                 if scraped:
-                    content = scraped.markdown
+                    content = scraped
                     analysis = self._analyze_company_content(company.name, content)
 
                     company.pricing_model = analysis.pricing_model
@@ -140,8 +203,15 @@ class Workflow:
             HumanMessage(content=self.prompts.recommendations_user(state.query, company_data))
         ]
 
-        response = self.llm.invoke(messages)
-        return {"analysis": response.content}
+        try:
+            response = self.llm.invoke(messages)
+        except Exception as e:
+            if self._is_api_key_error(e):
+                raise ValueError(
+                    "Invalid GOOGLE_API_KEY for Gemini. Generate a new key in Google AI Studio, update .env, and restart Streamlit."
+                ) from e
+            raise
+        return {"analysis": self._message_content_to_text(response.content)}
 
     def run(self, query: str) -> ResearchState:
         initial_state = ResearchState(query=query)
